@@ -1,0 +1,177 @@
+from tkinter import Button, Label
+import random
+import settings
+import ctypes # library generate messages used to end game used in line 122
+import sys
+
+class Cell:
+    # make cell count label global to this class
+    cell_count_label_object = None
+    all = []
+    cell_count = settings.CELL_COUNT
+
+    def __init__(self, x, y, is_mine=False):
+        self.is_mine = is_mine
+        self.is_opened = False
+        self.is_mine_candidate = False # for right click marking
+        self.cell_btn_object = None
+        self.x = x
+        self.y = y
+
+        # Append each instance of Cell object into this list
+        Cell.all.append(self)
+
+    # location in main code will be center_frame
+    def create_btn_object(self, location):
+        btn = Button(
+            location,
+            width=12,
+            height=4,
+            
+        )
+
+        # this assigns a listener event to a button with .bind() - this is a tkinter method
+        # takes in the action like left click, then function to execute
+        # <Button-1> is left, -2 is middle, -3 is right click
+        btn.bind("<Button-1>", self.left_click_actions) # you are not calling method like (), you are onlly passing reference
+        btn.bind("<Button-3>", self.right_click_actions)
+        self.cell_btn_object = btn
+
+    # in tkinter, if you have an event triggered, it needs 2 arguments
+    # so self, and then something else, we'll use event,
+    # which tktinter will add meta data to such as state, x,y cords etc.
+
+    # want's to call this method once. so this is a static method, not every time we make a cell
+    @staticmethod
+    def create_cell_count_label(location):
+        lbl = Label(
+            location,
+            bg="black",
+            fg="white",
+            text=f"Cells Left:{settings.CELL_COUNT}",
+            font=("", 30)
+        )
+
+        Cell.cell_count_label_object = lbl
+
+    def left_click_actions(self, event):
+        if self.is_mine == True:
+            self.show_mine()
+            # bellow reveals the the cell we clicked if it's not a mine 
+            # and also reveals surrounding cells if value is 0 meaning no mines surrounding
+        else:
+            if self.surrounded_cells_mines_length == 0:
+                for cell_obj in self.surrounded_cells:
+                    cell_obj.show_cell()
+            self.show_cell() # reveals cell if it's not a mine
+            # If mines count is equal to cells left count, player won
+            if Cell.cell_count == settings.MINES_COUNT: # bc that means all cells left are the mines
+                ctypes.windll.user32.MessageBoxW(0, "Congrats you won!", "Winner Winner", 0)
+
+
+        # cancel left and right click events if cell is already opened:
+        # this makes it so if a mine is opened, you can't flag it again or do left click action
+        self.cell_btn_object.unbind("<Button-1>")
+        self.cell_btn_object.unbind("<Button-3>")
+
+    def get_cell_by_axis(self, x, y):
+        #return a cell object based on value of x,y
+        # use cell all list
+
+        for cell in Cell.all:
+            if cell.x == x and cell.y == y: # just finding our cell in list
+                return cell
+
+    @property # look up why we put a property decorator here // says means read only attribute
+    def surrounded_cells(self):
+        # list of cells around where we click where we need to check if it's a mine
+        # essentially all adjacent cells
+        cells =[
+            self.get_cell_by_axis(self.x - 1, self.y - 1),
+            self.get_cell_by_axis(self.x - 1, self.y),
+            self.get_cell_by_axis(self.x - 1, self.y + 1),
+            self.get_cell_by_axis(self.x, self.y - 1),
+            self.get_cell_by_axis(self.x + 1, self.y - 1),
+            self.get_cell_by_axis(self.x + 1, self.y),
+            self.get_cell_by_axis(self.x + 1, self.y + 1),
+            self.get_cell_by_axis(self.x, self.y + 1),
+        ]
+        
+        # take care of "None" returned values aka when you click on a corner cell
+        # Use list comprehension aka 1 liner to get rid of None values, make a new list
+        cells = [cell for cell in cells if cell is not None]
+        return cells
+
+    def show_cell(self):
+        # so if is_opened is False, execute code below
+        # if you just said if self.isopened that means, if is_opened is true, run code below. But it's not bc we've set it to false in init
+        if not self.is_opened:
+            Cell.cell_count -=1
+            self.cell_btn_object.configure(text=self.surrounded_cells_mines_length)
+            # deducts label cells counter replace text cell count label with the newer count
+            # this continously updates whenever a cell gets clicked on.
+            if Cell.cell_count_label_object: # CHECK THIS FUNDAMENTALS - think this means if it's true or has a value
+                Cell.cell_count_label_object.configure(
+                    text=f"Cells Left: {Cell.cell_count}"
+                )
+                # if this is a mine candiate, then we condigure color to sysbutotn face in case it was marked as mine by user
+                self.cell_btn_object.configure(
+                    bg="SystemButtonFace"
+                )
+            # Mark the cell as opened, use is as the last line of this method
+            self.is_opened = True
+
+    @property # means read only attribute
+    def surrounded_cells_mines_length(self):
+        counter = 0
+        for cell in self.surrounded_cells:
+            if cell.is_mine:
+                counter+=1
+        
+        return counter
+
+
+    def show_mine(self):
+        self.cell_btn_object.configure(bg="red")
+        ctypes.windll.user32.MessageBoxW(0, "You clicked on a mine", "Game Over", 0)
+        sys.exit()
+
+
+
+    def right_click_actions(self, event):
+        if not self.is_mine_candidate:
+            self.cell_btn_object.configure(
+                bg="orange"
+            )
+
+            self.is_mine_candidate = True
+
+        else:
+            self.cell_btn_object.configure(
+                bg="SystemButtonFace" # this is the default color of buttons made by tkinter
+
+            )
+
+            self.is_mine_candidate = False
+
+
+
+    # We store our 36 cells into a list so we can access each one
+    # bc remember, each cell object is named variable c
+    # Here we pick 9 random cells
+    @staticmethod
+    def randomize_mines():
+        # picked_cells is a LIST, since it's picking from a list
+        picked_cells = random.sample(
+            Cell.all, settings.MINES_COUNT
+        )
+        # iterate picked cells list and changing is_mine attribute to True
+        for picked_cell in picked_cells:
+            picked_cell.is_mine = True
+
+
+
+    # magic method that you can use to print object, instead of 
+    # returning object memory location when called upon
+    def __repr__(self):
+        return f"Cell({self.x}, {self.y})"
